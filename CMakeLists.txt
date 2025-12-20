@@ -1,4 +1,11 @@
 # Defines AppBase library target.
+#
+# Dependencies (must be provided by parent project when used as submodule):
+#   - hive_utilities: Required for logging config, notifications, data collection
+#   - fc: Transitively required via hive_utilities (logging, serialization)
+#
+# When used as a submodule, ensure these targets exist before add_subdirectory(appbase).
+#
 project( AppBase )
 cmake_minimum_required( VERSION 2.8.12 )
 
