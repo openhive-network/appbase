@@ -5,7 +5,6 @@
 #include <fc/io/json.hpp>
 
 #include <boost/filesystem/path.hpp>
-#include <boost/core/demangle.hpp>
 #include <boost/asio.hpp>
 #include <hive/utilities/notifications.hpp>
 #include <hive/utilities/data_collector.hpp>
