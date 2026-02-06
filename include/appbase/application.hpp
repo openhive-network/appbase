@@ -8,7 +8,6 @@
 #include <boost/asio.hpp>
 #include <hive/utilities/notifications.hpp>
 #include <hive/utilities/data_collector.hpp>
-#include <boost/throw_exception.hpp>
 
 #include <atomic>
 
@@ -23,6 +22,13 @@ namespace appbase {
   namespace bfs = boost::filesystem;
 
   class application;
+
+  // Helper functions for throwing exceptions - implementations in application.cpp
+  // These allow removing boost/throw_exception.hpp from the public header
+  [[noreturn]] void throw_plugin_not_found_exception(
+      const std::string& name, const char* file, unsigned line, const char* func);
+  [[noreturn]] void throw_plugin_state_exception(
+      const std::string& message, const char* file, unsigned line, const char* func);
 
   class initialization_result 
   {
@@ -140,7 +146,7 @@ namespace appbase {
       {
         auto ptr = find_plugin< Plugin >();
         if( ptr == nullptr )
-          BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find plugin: " + Plugin::name() ) );
+          throw_plugin_not_found_exception(Plugin::name(), __FILE__, __LINE__, __func__);
         return *ptr;
       }
 
@@ -314,7 +320,7 @@ namespace appbase {
           get_app().plugin_initialized( *this );
         }
         if (_state != initialized)
-          BOOST_THROW_EXCEPTION( std::runtime_error("Initial state was not registered, so final state cannot be initialized.") );
+          throw_plugin_state_exception("Initial state was not registered, so final state cannot be initialized.", __FILE__, __LINE__, __func__);
       }
 
       virtual void startup() override final
@@ -327,7 +333,7 @@ namespace appbase {
           get_app().plugin_started( *this );
         }
         if (_state != started )
-          BOOST_THROW_EXCEPTION( std::runtime_error("Initial state was not initialized, so final state cannot be started.") );
+          throw_plugin_state_exception("Initial state was not initialized, so final state cannot be started.", __FILE__, __LINE__, __func__);
       }
 
       virtual void finalize_startup() override final

@@ -10,6 +10,8 @@
 #include <boost/filesystem.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/throw_exception.hpp>
+#include <boost/assert/source_location.hpp>
 #include <boost/scope_exit.hpp>
 
 #include <iostream>
@@ -17,6 +19,20 @@
 #include <thread>
 
 namespace appbase {
+
+[[noreturn]] void throw_plugin_not_found_exception(
+    const std::string& name, const char* file, unsigned line, const char* func)
+{
+  boost::source_location loc(file, line, func);
+  boost::throw_exception(std::runtime_error("unable to find plugin: " + name), loc);
+}
+
+[[noreturn]] void throw_plugin_state_exception(
+    const std::string& message, const char* file, unsigned line, const char* func)
+{
+  boost::source_location loc(file, line, func);
+  boost::throw_exception(std::runtime_error(message), loc);
+}
 
 class quoted
 {
@@ -597,7 +613,7 @@ abstract_plugin& application::get_plugin(const string& name)const
   if(!ptr)
   {
     notify_error("Unable to find plugin: " + name);
-    BOOST_THROW_EXCEPTION(std::runtime_error("unable to find plugin: " + name));
+    throw_plugin_not_found_exception(name, __FILE__, __LINE__, __func__);
   }
   return *ptr;
 }
