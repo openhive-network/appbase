@@ -1,4 +1,5 @@
 #include <appbase/application.hpp>
+#include "signals_handler.hpp"
 
 #include <hive/utilities/logging_config.hpp>
 #include <hive/utilities/notifications.hpp>
@@ -78,7 +79,7 @@ application::application()
     return a->get_pre_shutdown_order() > b->get_pre_shutdown_order();
   }
 ),
-  my(new application_impl()), handler_wrapper( [this](){ generate_interrupt_request(); } )
+  my(new application_impl()), handler_wrapper(std::make_unique<signals_handler_wrapper>([this](){ generate_interrupt_request(); }))
 {
 }
 
@@ -86,7 +87,7 @@ application::~application() { }
 
 void application::init_signals_handler()
 {
-  handler_wrapper.init();
+  handler_wrapper->init();
   notify_status("signals attached");
 }
 
@@ -459,12 +460,12 @@ void application::wait( bool log )
   finish();
   if( log ) ilog("Plugins have been finished");
 
-  handler_wrapper.wait4stop( log );
+  handler_wrapper->wait4stop( log );
 }
 
 bool application::is_thread_closed()
 {
-  return handler_wrapper.is_thread_closed();
+  return handler_wrapper->is_thread_closed();
 }
 
 void application::write_default_config(const bfs::path& cfg_file)
@@ -621,6 +622,11 @@ abstract_plugin& application::get_plugin(const string& name)const
 bfs::path application::data_dir()const
 {
   return my->_data_dir;
+}
+
+boost::asio::io_service& application::get_io_service()
+{
+  return handler_wrapper->get_io_service();
 }
 
 void application::add_program_options( const options_description& cli, const options_description& cfg )

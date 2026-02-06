@@ -1,11 +1,11 @@
 #pragma once
 #include <appbase/plugin.hpp>
-#include <appbase/signals_handler.hpp>
+
 
 #include <fc/io/json.hpp>
 
 #include <boost/filesystem/path.hpp>
-#include <boost/asio.hpp>
+#include <boost/asio/io_service.hpp>
 #include <hive/utilities/notifications.hpp>
 #include <hive/utilities/data_collector.hpp>
 
@@ -17,6 +17,8 @@ namespace fc {
   struct logging_config;
 }
 namespace appbase {
+
+  class signals_handler_wrapper;
 
   namespace bpo = boost::program_options;
   namespace bfs = boost::filesystem;
@@ -166,7 +168,7 @@ namespace appbase {
       template< typename... Plugin >
       void set_default_plugins() { default_plugins = { Plugin::name()... }; }
 
-      boost::asio::io_service& get_io_service() { return handler_wrapper.get_io_service(); }
+      boost::asio::io_service& get_io_service();
 
       void generate_interrupt_request();
 
@@ -219,7 +221,7 @@ namespace appbase {
       void generate_completions();
       std::unique_ptr< class application_impl > my;
 
-      signals_handler_wrapper                 handler_wrapper;
+      std::unique_ptr<signals_handler_wrapper> handler_wrapper;
 
       std::atomic_bool _is_interrupt_request{false};
 
