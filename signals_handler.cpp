@@ -89,7 +89,7 @@ void signals_handler::attach_signals()
 }
 
 signals_handler_wrapper::signals_handler_wrapper( signals_handler::interrupt_request_generation_type&& _interrupt_request_generation )
-                        : handler( std::move( _interrupt_request_generation ) )
+                        : handler( std::move( _interrupt_request_generation ) ), io_wrapper_( handler.get_io_service() )
 {
 
 }
@@ -152,6 +152,11 @@ void signals_handler_wrapper::block_signals()
 boost::asio::io_service& signals_handler_wrapper::get_io_service()
 {
   return handler.get_io_service();
+}
+
+io_service_wrapper& signals_handler_wrapper::get_io_service_wrapper()
+{
+  return io_wrapper_;
 }
 
 }

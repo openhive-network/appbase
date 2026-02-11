@@ -5,7 +5,6 @@
 #include <fc/io/json.hpp>
 
 #include <boost/filesystem/path.hpp>
-#include <boost/asio/io_service.hpp>
 #include <hive/utilities/notifications.hpp>
 #include <hive/utilities/data_collector.hpp>
 
@@ -19,6 +18,7 @@ namespace fc {
 namespace appbase {
 
   class signals_handler_wrapper;
+  class io_service_wrapper;
 
   namespace bpo = boost::program_options;
   namespace bfs = boost::filesystem;
@@ -168,7 +168,7 @@ namespace appbase {
       template< typename... Plugin >
       void set_default_plugins() { default_plugins = { Plugin::name()... }; }
 
-      boost::asio::io_service& get_io_service();
+      io_service_wrapper& get_io_service();
 
       void generate_interrupt_request();
 

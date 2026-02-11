@@ -624,9 +624,9 @@ bfs::path application::data_dir()const
   return my->_data_dir;
 }
 
-boost::asio::io_service& application::get_io_service()
+io_service_wrapper& application::get_io_service()
 {
-  return handler_wrapper->get_io_service();
+  return handler_wrapper->get_io_service_wrapper();
 }
 
 void application::add_program_options( const options_description& cli, const options_description& cfg )
