@@ -90,12 +90,12 @@ exited cleanly
 
 ### Boost ASIO 
 
-The application owns a `boost::asio::io_service` which starts running when appbase::exec() is called. If 
+The application owns a `boost::asio::io_context` which starts running when appbase::exec() is called. If 
 a plugin needs to perform IO or other asynchronous operations then it should dispatch it via 
-`get_app().get_io_service().post( lambda )`.
+`get_app().get().post( lambda )`.
 
-Because the app calls `io_service::run()` from within `application::exec()` all asynchronous operations
-posted to the io_service should be run in the same thread.  
+Because the app calls `io_context::run()` from within `application::exec()` all asynchronous operations
+posted to the io_context should be run in the same thread.  
 
 ## Graceful Exit 
 

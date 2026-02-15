@@ -3,7 +3,7 @@
 #include<memory>
 
 #include <boost/asio.hpp>
-#include <appbase/io_service_wrapper.hpp>
+#include <appbase/io_context_wrapper.hpp>
 
 namespace appbase {
 
@@ -26,7 +26,7 @@ namespace appbase {
 
       p_signal_set                      signals;
 
-      boost::asio::io_service           io_serv;
+      boost::asio::io_context           io_context;
 
       void handle_signal( const boost::system::error_code& err, int signal_number );
 
@@ -42,7 +42,7 @@ namespace appbase {
 
       void clear_signals();
 
-      boost::asio::io_service& get_io_service();
+      boost::asio::io_context& get_io_context();
   };
 
   class signals_handler_wrapper
@@ -55,7 +55,7 @@ namespace appbase {
 
       std::unique_ptr<std::thread>  handler_thread;
       signals_handler               handler;
-      io_service_wrapper            io_wrapper_;
+      io_context_wrapper            io_wrapper_;
 
       std::promise<void>            after_attach_signals_promise;
 
@@ -69,7 +69,7 @@ namespace appbase {
       void wait4stop( bool log = false );
       bool is_thread_closed();
 
-      boost::asio::io_service& get_io_service();
-      io_service_wrapper& get_io_service_wrapper();
+      boost::asio::io_context& get_io_context();
+      io_context_wrapper& get_io_context_wrapper();
   };
 }
