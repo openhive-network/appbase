@@ -3,6 +3,7 @@
 
 #include <hive/utilities/logging_config.hpp>
 #include <hive/utilities/notifications.hpp>
+#include <hive/utilities/data_collector.hpp>
 #include <hive/utilities/options_description_ex.hpp>
 
 #include <fc/thread/thread.hpp>
@@ -69,6 +70,17 @@ class application_impl {
     bfs::path               _data_dir;
 
     std::unique_ptr<fc::thread> _logging_thread;
+
+    /// Notification/status members moved here from the public header (PIMPL)
+    mutable hive::utilities::notifications::notification_handler_wrapper notification_handler;
+    hive::utilities::statuses_signal_manager status;
+
+    void broadcast(hive::utilities::notifications::notification_t notification) const
+    {
+      hive::utilities::notifications::error_handler([&]{
+        notification_handler.broadcast(std::move(notification));
+      });
+    }
 };
 
 application::application()
@@ -662,37 +674,48 @@ std::set< std::string > application::get_plugins_names() const
 
 void application::notify_status(const fc::string& current_status) const noexcept
 {
-  this->status.save_status(current_status);
-  notify("hived_status", "current_status", current_status);
+  my->status.save_status(current_status);
+  my->broadcast(hive::utilities::notifications::notification_t("hived_status", "current_status", current_status));
 }
 
 void application::notify_fork(const uint32_t& block_num, const fc::string& block_id) const noexcept
 {
-  this->status.save_fork(block_num, block_id);
-  notify("switching forks", "num", block_num, "id", block_id);
+  my->status.save_fork(block_num, block_id);
+  my->broadcast(hive::utilities::notifications::notification_t("switching forks", "num", block_num, "id", block_id));
 }
 
 void application::notify_webserver(const fc::string& webserver_type, const fc::string& address, const uint16_t port) const noexcept
 {
-  this->status.save_webserver(webserver_type, address, port);
-  this->notify( "webserver listening",
-    // {
-        "type", webserver_type,
-        "address", address,
-        "port", port
-    // }
-    );
+  my->status.save_webserver(webserver_type, address, port);
+  my->broadcast(hive::utilities::notifications::notification_t( "webserver listening",
+    "type", webserver_type,
+    "address", address,
+    "port", port
+  ));
 }
 
 void application::notify_error(const fc::string& error_message) const noexcept
 {
-  this->status.save_status(error_message);
-  notify("error", "message", error_message);
+  my->status.save_status(error_message);
+  my->broadcast(hive::utilities::notifications::notification_t("error", "message", error_message));
 }
 
 void application::setup_notifications(const boost::program_options::variables_map &args) const
 {
-  notification_handler.setup( hive::utilities::notifications::setup_notifications( args ) );
+  my->notification_handler.setup( hive::utilities::notifications::setup_notifications( args ) );
+}
+
+hive::utilities::statuses_signal_manager& application::get_status() { return my->status; }
+const hive::utilities::statuses_signal_manager& application::get_status() const { return my->status; }
+
+void application::notify_information(const fc::string& name, const fc::string& key, const fc::variant& value) const noexcept
+{
+  try
+  {
+    my->broadcast(hive::utilities::notifications::notification_t( name, key, value ));
+    my->status.save_information( name, key, value );
+  }
+  catch( ... ) {}
 }
 
 void application::kill()
