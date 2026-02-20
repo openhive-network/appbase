@@ -1,15 +1,18 @@
 #pragma once
 #include <appbase/plugin.hpp>
-#include <appbase/signals_handler.hpp>
+
 
 #include <fc/io/json.hpp>
+#include <fc/exception/exception.hpp>
 
 #include <boost/filesystem/path.hpp>
-#include <boost/core/demangle.hpp>
-#include <boost/asio.hpp>
-#include <hive/utilities/notifications.hpp>
-#include <hive/utilities/data_collector.hpp>
-#include <boost/throw_exception.hpp>
+// Forward declarations — full headers are included only in application.cpp
+namespace hive { namespace utilities {
+  struct statuses_signal_manager;
+  namespace notifications {
+    class notification_handler_wrapper;
+  }
+}}
 
 #include <atomic>
 
@@ -20,10 +23,20 @@ namespace fc {
 }
 namespace appbase {
 
+  class signals_handler_wrapper;
+  class io_service_wrapper;
+
   namespace bpo = boost::program_options;
   namespace bfs = boost::filesystem;
 
   class application;
+
+  // Helper functions for throwing exceptions - implementations in application.cpp
+  // These allow removing boost/throw_exception.hpp from the public header
+  [[noreturn]] void throw_plugin_not_found_exception(
+      const std::string& name, const char* file, unsigned line, const char* func);
+  [[noreturn]] void throw_plugin_state_exception(
+      const std::string& message, const char* file, unsigned line, const char* func);
 
   class initialization_result 
   {
@@ -141,7 +154,7 @@ namespace appbase {
       {
         auto ptr = find_plugin< Plugin >();
         if( ptr == nullptr )
-          BOOST_THROW_EXCEPTION( std::runtime_error( "unable to find plugin: " + Plugin::name() ) );
+          throw_plugin_not_found_exception(Plugin::name(), __FILE__, __LINE__, __func__);
         return *ptr;
       }
 
@@ -161,7 +174,7 @@ namespace appbase {
       template< typename... Plugin >
       void set_default_plugins() { default_plugins = { Plugin::name()... }; }
 
-      boost::asio::io_service& get_io_service() { return handler_wrapper.get_io_service(); }
+      io_service_wrapper& get_io_service();
 
       void generate_interrupt_request();
 
@@ -214,11 +227,9 @@ namespace appbase {
       void generate_completions();
       std::unique_ptr< class application_impl > my;
 
-      signals_handler_wrapper                 handler_wrapper;
+      std::unique_ptr<signals_handler_wrapper> handler_wrapper;
 
       std::atomic_bool _is_interrupt_request{false};
-
-      mutable hive::utilities::notifications::notification_handler_wrapper notification_handler;
 
       bool is_finished = false;
 
@@ -229,35 +240,11 @@ namespace appbase {
       */
       std::mutex app_mtx;
 
-      template <typename... KeyValuesTypes>
-      inline void notify(
-          const fc::string &name,
-          KeyValuesTypes &&...key_value_pairs) const noexcept
-      {
-        hive::utilities::notifications::error_handler([&]{
-          notification_handler.broadcast(
-            hive::utilities::notifications::notification_t(name, std::forward<KeyValuesTypes>(key_value_pairs)...)
-          );
-        });
-      }
-
-      inline void notify(
-          const fc::string &name,
-          hive::utilities::notifications::collector_t&& collector) const noexcept
-      {
-
-        hive::utilities::notifications::error_handler([&]{
-          notification_handler.broadcast(
-            hive::utilities::notifications::notification_t(name, std::forward<hive::utilities::notifications::collector_t>(collector))
-          );
-        });
-      }
-
-
     public:
 
       finish_request_type finish_request;
-      hive::utilities::statuses_signal_manager status;
+      hive::utilities::statuses_signal_manager& get_status();
+      const hive::utilities::statuses_signal_manager& get_status() const;
 
       void notify_status(const fc::string& current_status) const noexcept;
       void notify_fork(const uint32_t& block_num, const fc::string& block_id) const noexcept;
@@ -265,27 +252,7 @@ namespace appbase {
       void notify_webserver(const fc::string& webserver_type, const fc::string& address, const uint16_t port) const noexcept;
       void setup_notifications(const boost::program_options::variables_map &args) const;
 
-      template <typename... KeyValuesTypes>
-      inline void notify_information(
-          const fc::string &name,
-          KeyValuesTypes &&...key_value_pairs) const noexcept
-      {
-        this->notify(name, std::forward<KeyValuesTypes>(key_value_pairs)...);
-        this->status.save_information(name, std::forward<KeyValuesTypes>(key_value_pairs)...);
-      }
-
-      template <typename... KeyValuesTypes>
-      static inline void dynamic_notify(
-          hive::utilities::notifications::notification_handler_wrapper& handler,
-          const fc::string &name,
-          KeyValuesTypes &&...key_value_pairs)
-      {
-        hive::utilities::notifications::error_handler([&]{
-          handler.broadcast(
-            hive::utilities::notifications::notification_t(name, std::forward<KeyValuesTypes>(key_value_pairs)...)
-          );
-        });
-      }
+      void notify_information(const fc::string& name, const fc::string& key, const fc::variant& value) const noexcept;
 
   };
 
@@ -315,7 +282,7 @@ namespace appbase {
           get_app().plugin_initialized( *this );
         }
         if (_state != initialized)
-          BOOST_THROW_EXCEPTION( std::runtime_error("Initial state was not registered, so final state cannot be initialized.") );
+          throw_plugin_state_exception("Initial state was not registered, so final state cannot be initialized.", __FILE__, __LINE__, __func__);
       }
 
       virtual void startup() override final
@@ -328,7 +295,7 @@ namespace appbase {
           get_app().plugin_started( *this );
         }
         if (_state != started )
-          BOOST_THROW_EXCEPTION( std::runtime_error("Initial state was not initialized, so final state cannot be started.") );
+          throw_plugin_state_exception("Initial state was not initialized, so final state cannot be started.", __FILE__, __LINE__, __func__);
       }
 
       virtual void finalize_startup() override final

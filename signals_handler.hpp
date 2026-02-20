@@ -3,6 +3,7 @@
 #include<memory>
 
 #include <boost/asio.hpp>
+#include <appbase/io_service_wrapper.hpp>
 
 namespace appbase {
 
@@ -54,6 +55,7 @@ namespace appbase {
 
       std::unique_ptr<std::thread>  handler_thread;
       signals_handler               handler;
+      io_service_wrapper            io_wrapper_;
 
       std::promise<void>            after_attach_signals_promise;
 
@@ -68,5 +70,6 @@ namespace appbase {
       bool is_thread_closed();
 
       boost::asio::io_service& get_io_service();
+      io_service_wrapper& get_io_service_wrapper();
   };
 }
