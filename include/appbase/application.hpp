@@ -24,7 +24,7 @@ namespace fc {
 namespace appbase {
 
   class signals_handler_wrapper;
-  class io_service_wrapper;
+  class io_context_wrapper;
 
   namespace bpo = boost::program_options;
   namespace bfs = boost::filesystem;
@@ -174,7 +174,7 @@ namespace appbase {
       template< typename... Plugin >
       void set_default_plugins() { default_plugins = { Plugin::name()... }; }
 
-      io_service_wrapper& get_io_service();
+      io_context_wrapper& get_io_context();
 
       void generate_interrupt_request();
 

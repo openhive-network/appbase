@@ -26,7 +26,7 @@ void signals_handler::init( std::promise<void> after_attach_signals )
 
   after_attach_signals.set_value();
 
-  io_serv.run();
+  io_context.run();
 }
 
 void signals_handler::generate_interrupt_request()
@@ -34,9 +34,9 @@ void signals_handler::generate_interrupt_request()
   interrupt_request_generation();
 }
 
-boost::asio::io_service& signals_handler::get_io_service()
+boost::asio::io_context& signals_handler::get_io_context()
 {
-  return io_serv;
+  return io_context;
 }
 
 void signals_handler::clear_signals()
@@ -83,13 +83,13 @@ void signals_handler::attach_signals()
     **/
   signal(SIGPIPE, SIG_IGN);
 
-  signals = p_signal_set( new boost::asio::signal_set( io_serv, SIGINT, SIGTERM ) );
+  signals = p_signal_set( new boost::asio::signal_set( io_context, SIGINT, SIGTERM ) );
 
   signals->async_wait( boost::bind( &signals_handler::handle_signal, this, boost::placeholders::_1, boost::placeholders::_2 ) );
 }
 
 signals_handler_wrapper::signals_handler_wrapper( signals_handler::interrupt_request_generation_type&& _interrupt_request_generation )
-                        : handler( std::move( _interrupt_request_generation ) ), io_wrapper_( handler.get_io_service() )
+                        : handler( std::move( _interrupt_request_generation ) ), io_wrapper_( handler.get_io_context() )
 {
 
 }
@@ -123,7 +123,7 @@ void signals_handler_wrapper::wait4stop( bool log )
       if( log ) ilog("Signals have been cleared");
 
       if( log ) ilog("Stopping IO service");
-      get_io_service().stop();
+      get_io_context().stop();
       if( log ) ilog("IO service has been stopped");
 
       if( log ) ilog("Joining handler's thread");
@@ -149,12 +149,12 @@ void signals_handler_wrapper::block_signals()
   sigprocmask(SIG_BLOCK, &blockset, NULL);
 }
 
-boost::asio::io_service& signals_handler_wrapper::get_io_service()
+boost::asio::io_context& signals_handler_wrapper::get_io_context()
 {
-  return handler.get_io_service();
+  return handler.get_io_context();
 }
 
-io_service_wrapper& signals_handler_wrapper::get_io_service_wrapper()
+io_context_wrapper& signals_handler_wrapper::get_io_context_wrapper()
 {
   return io_wrapper_;
 }
