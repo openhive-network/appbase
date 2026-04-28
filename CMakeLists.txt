@@ -16,7 +16,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS "ON")
 if( APPLE )
   # Apple Specific Options Here
   message( STATUS "Configuring AppBase on OS X" )
-  set( CMAKE_CXX_FLAGS "${CMAKE_C_FLAGS} -stdlib=libc++ -Wall -Wno-conversion -Wno-deprecated-declarations" )
+  # -Wno-missing-template-arg-list-after-template-kw silences a Clang 17+
+  # diagnostic triggered by Boost 1.88's segment_manager.hpp.
+  set( CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++ -Wall -Wno-conversion -Wno-deprecated-declarations -Wno-missing-template-arg-list-after-template-kw" )
 else( APPLE )
   # Linux Specific Options Here
   message( STATUS "Configuring AppBase on Linux" )
