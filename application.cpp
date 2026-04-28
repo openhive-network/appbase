@@ -20,7 +20,29 @@
 #include <fstream>
 #include <thread>
 
+#ifdef __APPLE__
+#include <signal.h>
+#include <pthread.h>
+#include <atomic>
+#endif
+
 namespace appbase {
+
+#ifdef __APPLE__
+namespace {
+// boost::asio's signal_set on Darwin (kqueue/EVFILT_SIGNAL) does not deliver
+// SIGINT/SIGTERM to the dedicated handler thread on this build, so a plain
+// sigaction handler is installed on the main thread instead — flipping the
+// atomic flag is the only thing needed to wake wait4interrupt_request().
+std::atomic<std::atomic_bool*> _apple_interrupt_flag_ptr{nullptr};
+
+extern "C" void _apple_appbase_signal_handler(int /*sig*/)
+{
+  if (auto* p = _apple_interrupt_flag_ptr.load(std::memory_order_acquire))
+    p->store(true, std::memory_order_relaxed);
+}
+}
+#endif
 
 [[noreturn]] void throw_plugin_not_found_exception(
     const std::string& name, const char* file, unsigned line, const char* func)
@@ -448,6 +470,32 @@ void application::finish()
 
 void application::wait4interrupt_request()
 {
+#ifdef __APPLE__
+  // boost::asio's signal_set on Darwin doesn't reliably wake on SIGINT/SIGTERM
+  // here, so install a sigaction fallback that flips the flag directly. Done
+  // here (rather than in init_signals_handler) for two reasons:
+  //   1. it has to land *after* signals_handler_wrapper::block_signals has run,
+  //      otherwise boost::asio's lazy kqueue setup clobbers our handler;
+  //   2. we also need to unblock SIGINT/SIGTERM on the main thread — the
+  //      block_signals() above masks them on every thread that subsequently
+  //      gets created, so without unblocking here no thread can run any
+  //      sigaction handler at all and the signal sits queued forever.
+  static std::once_flag _sigfallback_once;
+  std::call_once(_sigfallback_once, [this]{
+    _apple_interrupt_flag_ptr.store(&_is_interrupt_request, std::memory_order_release);
+    struct sigaction sa{};
+    sa.sa_handler = &_apple_appbase_signal_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, nullptr);
+    sigaction(SIGTERM, &sa, nullptr);
+    sigset_t unblock;
+    sigemptyset(&unblock);
+    sigaddset(&unblock, SIGINT);
+    sigaddset(&unblock, SIGTERM);
+    pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
+  });
+#endif
   const uint32_t _wait_interval = 200;
   while( !is_interrupt_request() )
   {
@@ -721,6 +769,13 @@ void application::notify_information(const fc::string& name, const fc::string& k
 void application::kill()
 {
   ::kill(getpid(), SIGINT);
+#ifdef __APPLE__
+  // boost::asio's signal_set on macOS (kqueue/EVFILT_SIGNAL) can miss self-sent
+  // signals delivered while the io_context loop hasn't yet returned to its
+  // poll, leaving wait4interrupt_request() spinning. Flip the flag directly so
+  // the polling waiter exits and the regular shutdown path proceeds.
+  generate_interrupt_request();
+#endif
 }
 
 bool application::quit( bool log )
