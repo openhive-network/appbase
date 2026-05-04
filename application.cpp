@@ -32,8 +32,11 @@ namespace appbase {
 namespace {
 // boost::asio's signal_set on Darwin (kqueue/EVFILT_SIGNAL) does not deliver
 // SIGINT/SIGTERM to the dedicated handler thread on this build, so a plain
-// sigaction handler is installed on the main thread instead — flipping the
-// atomic flag is the only thing needed to wake wait4interrupt_request().
+// sigaction handler is installed on the main thread from init_signals_handler
+// — it is active for the entire lifetime of the application (including the
+// long blockchain replay path inside startup()), and flipping this atomic
+// flag is the only thing needed for is_interrupt_request() / wait4interrupt_request()
+// to observe the signal.
 std::atomic<std::atomic_bool*> _apple_interrupt_flag_ptr{nullptr};
 
 extern "C" void _apple_appbase_signal_handler(int /*sig*/)
@@ -122,6 +125,51 @@ application::~application() { }
 void application::init_signals_handler()
 {
   handler_wrapper->init();
+
+#ifdef __APPLE__
+  // Install the sigaction-based fallback now (rather than later in
+  // wait4interrupt_request) so SIGINT/SIGTERM are honored throughout the
+  // entire application lifetime — including the long blockchain replay path
+  // that runs synchronously inside startup() on the main thread. Without this,
+  // Ctrl+C goes nowhere until replay finishes (which can be hours/days).
+  //
+  // Two ordering constraints govern when this can be done safely:
+  //   1. It must land *after* signals_handler_wrapper::block_signals() — done
+  //      at the end of handler_wrapper->init() above — and after boost::asio
+  //      has performed its lazy signal-handling registration on the handler
+  //      thread, otherwise boost would clobber our sigaction. signals_handler::init
+  //      sets the after_attach_signals promise *before* it calls io_context.run(),
+  //      so when handler_wrapper->init() returns, run() may not yet have begun.
+  //      We force progress by posting a no-op task onto the handler thread's
+  //      io_context and waiting for it: the task can only execute once the
+  //      worker thread has entered run(), guaranteeing that boost has finished
+  //      its lazy setup before we install our handler.
+  //   2. block_signals() masks SIGINT/SIGTERM on this thread (and every thread
+  //      created subsequently inherits the mask), so we also have to unblock
+  //      both signals on the main thread, otherwise the kernel can never
+  //      deliver them and our sigaction handler never runs.
+  {
+    std::promise<void> io_started;
+    auto io_started_fut = io_started.get_future();
+    boost::asio::post(handler_wrapper->get_io_context(),
+                      [&io_started]{ io_started.set_value(); });
+    io_started_fut.wait();
+  }
+
+  _apple_interrupt_flag_ptr.store(&_is_interrupt_request, std::memory_order_release);
+  struct sigaction sa{};
+  sa.sa_handler = &_apple_appbase_signal_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+  sigaction(SIGINT, &sa, nullptr);
+  sigaction(SIGTERM, &sa, nullptr);
+  sigset_t unblock;
+  sigemptyset(&unblock);
+  sigaddset(&unblock, SIGINT);
+  sigaddset(&unblock, SIGTERM);
+  pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
+#endif
+
   notify_status("signals attached");
 }
 
@@ -470,32 +518,6 @@ void application::finish()
 
 void application::wait4interrupt_request()
 {
-#ifdef __APPLE__
-  // boost::asio's signal_set on Darwin doesn't reliably wake on SIGINT/SIGTERM
-  // here, so install a sigaction fallback that flips the flag directly. Done
-  // here (rather than in init_signals_handler) for two reasons:
-  //   1. it has to land *after* signals_handler_wrapper::block_signals has run,
-  //      otherwise boost::asio's lazy kqueue setup clobbers our handler;
-  //   2. we also need to unblock SIGINT/SIGTERM on the main thread — the
-  //      block_signals() above masks them on every thread that subsequently
-  //      gets created, so without unblocking here no thread can run any
-  //      sigaction handler at all and the signal sits queued forever.
-  static std::once_flag _sigfallback_once;
-  std::call_once(_sigfallback_once, [this]{
-    _apple_interrupt_flag_ptr.store(&_is_interrupt_request, std::memory_order_release);
-    struct sigaction sa{};
-    sa.sa_handler = &_apple_appbase_signal_handler;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = SA_RESTART;
-    sigaction(SIGINT, &sa, nullptr);
-    sigaction(SIGTERM, &sa, nullptr);
-    sigset_t unblock;
-    sigemptyset(&unblock);
-    sigaddset(&unblock, SIGINT);
-    sigaddset(&unblock, SIGTERM);
-    pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
-  });
-#endif
   const uint32_t _wait_interval = 200;
   while( !is_interrupt_request() )
   {
@@ -770,10 +792,11 @@ void application::kill()
 {
   ::kill(getpid(), SIGINT);
 #ifdef __APPLE__
-  // boost::asio's signal_set on macOS (kqueue/EVFILT_SIGNAL) can miss self-sent
-  // signals delivered while the io_context loop hasn't yet returned to its
-  // poll, leaving wait4interrupt_request() spinning. Flip the flag directly so
-  // the polling waiter exits and the regular shutdown path proceeds.
+  // The sigaction installed in init_signals_handler will flip the interrupt
+  // flag when the SIGINT above is delivered, but we also set it explicitly as
+  // a defensive double-set: it is a single atomic store, immune to any
+  // signal-mask edge case (e.g. a future code path that masks SIGINT before
+  // kill() runs and the kernel happens to deliver to that thread first).
   generate_interrupt_request();
 #endif
 }
