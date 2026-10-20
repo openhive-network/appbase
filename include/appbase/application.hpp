@@ -6,7 +6,7 @@
 #include <fc/exception/exception.hpp>
 
 #include <boost/filesystem/path.hpp>
-// Forward declarations — full headers are included only in application.cpp
+// Forward declarations - full headers are included only in application.cpp
 namespace hive { namespace utilities {
   struct statuses_signal_manager;
   namespace notifications {
