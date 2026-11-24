@@ -33,7 +33,16 @@ if(ENABLE_COVERAGE_TESTING)
     SET(CMAKE_CXX_FLAGS "--coverage ${CMAKE_CXX_FLAGS}")
 endif()
 
-add_library( appbase STATIC
+# Off by default: appbase is a static archive unless the parent project asks
+# for a shared library (hive sets this from its own shared-library option).
+option( APPBASE_BUILD_SHARED_LIBS "Build appbase as a shared library" OFF )
+if( APPBASE_BUILD_SHARED_LIBS )
+  set( APPBASE_LIBRARY_TYPE SHARED )
+else()
+  set( APPBASE_LIBRARY_TYPE STATIC )
+endif()
+
+add_library( appbase ${APPBASE_LIBRARY_TYPE}
              signals_handler.cpp
              application.cpp
              ${HEADERS}
